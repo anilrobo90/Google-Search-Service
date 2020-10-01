@@ -2,9 +2,11 @@
 using Google.Apis.Customsearch.v1;
 using Google.Apis.Customsearch.v1.Data;
 using Google.Apis.Services;
+using NLog;
 using Sentry;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.ServiceProcess;
 using System.Threading;
 using System.Windows.Threading;
@@ -17,21 +19,23 @@ namespace GoogleSearchBacked
         private String searchquery = String.Empty;
         private int noOfSearches = 0;
         private int timeout = 0;
+        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
 
         public SearchConsoleBackend()
         {
             InitializeComponent();
-            SentrySdk.Init("https://361f3203cce243259bd6750d7becc03b@o335353.ingest.sentry.io/5447789");
+            SentrySdk.Init(System.Configuration.ConfigurationManager.AppSettings["sentry_api"]);
             SentrySdk.Init(o => o.Release = "GoogleSearchBackend@1.0.0");
         }
 
         protected override void OnStart(string[] args)
         {
-            string[] configData = RBUtility.Utils.ReadLine(System.AppDomain.CurrentDomain.BaseDirectory + "\\SearchGoogle.ini", '=', 3).Split('=');
-            searchquery = configData[0];
-            noOfSearches = Convert.ToInt32(configData[1]);
-            timeout = Convert.ToInt32(configData[2]);
+            string test1 = System.Configuration.ConfigurationManager.AppSettings["sentry_api"];
+            Logger.Info("Search Service Service Started");            
+            searchquery = System.Configuration.ConfigurationManager.AppSettings["searchquery"];
+            noOfSearches = Convert.ToInt32(System.Configuration.ConfigurationManager.AppSettings["noOfSearches"],CultureInfo.InvariantCulture);
+            timeout = Convert.ToInt32(System.Configuration.ConfigurationManager.AppSettings["timeout"],CultureInfo.InvariantCulture);
             timer_thread = new Timer(TimerElapsed, null, 60000 * timeout, Timeout.Infinite);
         }
 
@@ -48,27 +52,23 @@ namespace GoogleSearchBacked
                 SearchString(searchquery, noOfSearches);
             }
 
-            catch (Exception e)
+            catch (ObjectDisposedException e)
             {
                 SentrySdk.CaptureException(e);
-                RBUtility.Utils.WriteLog(e.StackTrace, System.AppDomain.CurrentDomain.BaseDirectory + "\\GoogleSearchBacked");
+                Logger.Error(e,"Error Occured While in Time Elapsed");
             }
-        }
 
-        void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
-        {
-            // Process unhandled exception
-            timer_thread.Dispose();            
-            SentrySdk.CaptureException(e.Exception);
-            RBUtility.Utils.WriteLog(e.Exception.StackTrace, System.AppDomain.CurrentDomain.BaseDirectory + "\\GoogleSearchBacked");
-            // Prevent default unhandled exception processing
-            e.Handled = true;
+            catch (ArgumentOutOfRangeException e)
+            {
+                SentrySdk.CaptureException(e);
+                Logger.Error(e, "Error Occured While in Time Elapsed");
+            }
         }
 
         private static void SearchString(string query, int nosearchresults)
         {
-            const string apiKey = "AIzaSyAoFM_UK-VL_PajfEqLklEewgsFAbRaPTU";
-            const string searchEngineId = "009922060888341038034:e86fde6t7r6";
+            string apiKey = System.Configuration.ConfigurationManager.AppSettings["apiKey"];
+            string searchEngineId = System.Configuration.ConfigurationManager.AppSettings["searchEngineId"];
 
             using (CustomsearchService customSearchService = new CustomsearchService(new BaseClientService.Initializer { ApiKey = apiKey }))
             {
@@ -92,8 +92,8 @@ namespace GoogleSearchBacked
                         {
                             foreach (var item in paging)
                             {
-                                worksheet.Cell("A" + (cell + 1).ToString()).Value = item.Title;
-                                worksheet.Cell("B" + (cell + 1).ToString()).Value = item.Link;
+                                worksheet.Cell("A" + (cell + 1).ToString(CultureInfo.InvariantCulture)).Value = item.Title;
+                                worksheet.Cell("B" + (cell + 1).ToString(CultureInfo.InvariantCulture)).Value = item.Link;
                                 cell++;
                             }
                         }
